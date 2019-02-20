@@ -2,21 +2,17 @@ pragma solidity ^0.5.2;
 
 import "./batch721.sol";
 import "./custodian.sol";
-import "./clonefactory.sol";
 
-contract CustodianOfBatch is Custodian, CloneFactory {
+contract CustodianOfBatch is Custodian {
     BatchNFT public batchChild;
 
-    function initialize(BatchNFT nftLibrary, uint256 count) public {
-        BatchNFT child = BatchNFT(createClone(address(nftLibrary)));
-        batchChild = child;
-        child.initialize(count);
-    }
+    function initialize(uint256 count) public {
+        batchChild = new BatchNFT(count);    }
     
-    constructor(BatchNFT nftLibrary, uint256 count)
+    constructor(uint256 count)
         public
         Custodian()
     {
-        initialize(nftLibrary, count);
+        initialize(count);
     }
 }
