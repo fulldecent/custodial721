@@ -4,7 +4,7 @@ pragma solidity ^0.5.2;
 
 /// @title A reusable contract to comply with ERC-165
 /// @author William Entriken (https://phor.net)
-contract SupportsInterface {
+contract SupportsInterface2 {
     /// @dev Every interface that we support, do not set 0xffffffff to true
     mapping(bytes4 => bool) internal supportedInterfaces;
 
@@ -24,19 +24,22 @@ contract SupportsInterface {
 }
 
 /// @title ERC-721 Non-Fungible Token Standard
-interface ERC721TokenReceiver {
+interface ERC721TokenReceiver2 {
     function onERC721Received(address _operator, address _from, uint256 _tokenId, bytes calldata _data) external returns(bytes4);
 }
 
-/// @title Batch creation of NFTs
+/// @title Batch creation of NFTs, assigned all to msg.sender
 /// @dev This implementation assumes:
 ///  - A fixed supply of NFTs, cannot mint or burn
 ///  - ids are numbered sequentially starting at 1.
 ///  - NFTs are initially assigned to this contract
 ///  - This contract does not externally call its own functions
 /// @author William Entriken (https://phor.net)
-contract SuNFT is SupportsInterface {
+contract BatchNFT is SupportsInterface2 {
     uint256 fixedSupplyAmount; /* i.e. TOTAL_SUPPLY */
+    address batchOwner; // The default owner for tokens created in batch
+    // TODO: some code refers to that as "this contract", and those are
+    // old comments, they should be updated with batchOwner
     
     /// The function of the constructor
     function initialize(uint256 newFixedSupplyAmount) public {
@@ -56,7 +59,8 @@ contract SuNFT is SupportsInterface {
 
         // The effect of substitution makes storing 1, 2, ..., TOTAL_SUPPLY
         // unnecessary at deployment time
-        _tokensOfOwnerWithSubstitutions[address(this)].length = fixedSupplyAmount;
+        batchOwner = msg.sender;
+        _tokensOfOwnerWithSubstitutions[batchOwner].length = fixedSupplyAmount;
         // for (uint256 i = 0; i < TOTAL_SUPPLY; i++) {
         //     _tokensOfOwnerWithSubstitutions[address(this)][i] = i + 1;
         // }
@@ -83,7 +87,7 @@ contract SuNFT is SupportsInterface {
     modifier mustBeOwnedByThisContract(uint256 _tokenId) {
         require(_tokenId >= 1 && _tokenId <= fixedSupplyAmount);
         address owner = _tokenOwnerWithSubstitutions[_tokenId];
-        require(owner == address(0) || owner == address(this));
+        require(owner == address(0) || owner == address(batchOwner));
         _;
     }
 
@@ -149,7 +153,7 @@ contract SuNFT is SupportsInterface {
         _owner = _tokenOwnerWithSubstitutions[_tokenId];
         // Do owner address substitution
         if (_owner == address(0)) {
-            _owner = address(this);
+            _owner = address(batchOwner);
         }
     }
 
@@ -200,7 +204,7 @@ contract SuNFT is SupportsInterface {
         address owner = _tokenOwnerWithSubstitutions[_tokenId];
         // Do owner address substitution
         if (owner == address(0)) {
-            owner = address(this);
+            owner = address(batchOwner);
         }
         require(owner == _from);
         require(_to != address(0));
@@ -222,7 +226,7 @@ contract SuNFT is SupportsInterface {
         address _owner = _tokenOwnerWithSubstitutions[_tokenId];
         // Do owner address substitution
         if (_owner == address(0)) {
-            _owner = address(this);
+            _owner = address(batchOwner);
         }
         tokenApprovals[_tokenId] = _approved;
         emit Approval(_owner, _approved, _tokenId);
@@ -291,7 +295,7 @@ contract SuNFT is SupportsInterface {
         require(_index < _tokensOfOwnerWithSubstitutions[_owner].length);
         _tokenId = _tokensOfOwnerWithSubstitutions[_owner][_index];
         // Handle substitutions
-        if (_owner == address(this)) {
+        if (_owner == address(batchOwner)) {
             if (_tokenId == 0) {
                 _tokenId = _index + 1;
             }
@@ -311,7 +315,7 @@ contract SuNFT is SupportsInterface {
         address from = _tokenOwnerWithSubstitutions[_tokenId];
         // Do owner address substitution
         if (from == address(0)) {
-            from = address(this);
+            from = address(batchOwner);
         }
 
         // Take away from the FROM address
@@ -386,7 +390,7 @@ contract SuNFT is SupportsInterface {
     // address[] private nftIds;
     // mapping (uint256 => uint256) private nftIndexOfId;
 
-    constructor(uint newFixedSupplyAmount) internal {
+    constructor(uint newFixedSupplyAmount) public {
         initialize(newFixedSupplyAmount);
     }
 
@@ -399,7 +403,7 @@ contract SuNFT is SupportsInterface {
         address owner = _tokenOwnerWithSubstitutions[_tokenId];
         // Do owner address substitution
         if (owner == address(0)) {
-            owner = address(this);
+            owner = address(batchOwner);
         }
         require(owner == _from);
         require(_to != address(0));
@@ -411,7 +415,7 @@ contract SuNFT is SupportsInterface {
         if (codeSize == 0) {
             return;
         }
-        bytes4 retval = ERC721TokenReceiver(_to).onERC721Received(msg.sender, _from, _tokenId, data);
+        bytes4 retval = ERC721TokenReceiver2(_to).onERC721Received(msg.sender, _from, _tokenId, data);
         require(retval == ERC721_RECEIVED);
     }
 }

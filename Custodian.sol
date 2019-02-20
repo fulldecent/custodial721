@@ -7,7 +7,7 @@ import "https://github.com/0xcert/ethereum-erc721/src/contracts/utils/supports-i
 import "https://github.com/0xcert/ethereum-erc721/src/contracts/math/safe-math.sol";
 import "https://github.com/0xcert/ethereum-erc721/src/contracts/utils/address-utils.sol";
 
-interface Singleton721 /* is ERC721, ERC165, ERC721Enumerable */ {
+interface Singleton721 /* is ERC721, ERC165 */ {
     // This works as a ERC-721 implementation but we also specify that totalSupply is always 1
     // The ownership of token #0 signifies the ownership of this contract
 }
@@ -17,21 +17,18 @@ interface CustodianOf721s /* is ERC721TokenReceiver */ {
     function enter721SafeTransferFrom(ERC721 targetContract, uint256 targetTokenId) external;
     function exit721TransferFrom(ERC721 targetContract, uint256 targetTokenId) external;
     function exit721SafeTransferFrom(ERC721 targetContract, uint256 targetTokenId) external;
-    function countOf721s() external returns (uint256);
-    function a721ByIndex(uint index) external returns (ERC721 targetContract, uint256 targetTokenId);
 }
 
 contract Custodian is Singleton721, CustodianOf721s ,/*inherited*/ ERC721, ERC165, ERC721TokenReceiver {
     using AddressUtils for address;
 
-    address private owner = address(0);
+    address internal owner = address(0);
 
     function initialize() public {
         require(owner == address(0), "Already initialized");
         owner = msg.sender;
         supportedInterfaces[0x01ffc9a7] = true; // ERC165
         supportedInterfaces[0x80ac58cd] = true; // ERC721
-        supportedInterfaces[0x780e9d63] = true; // ERC721Enumerable
         supportedInterfaces[0xf1f1f1f1] = true; // TODO: Finalize custodian interface
     }
     
@@ -379,92 +376,48 @@ contract Custodian is Singleton721, CustodianOf721s ,/*inherited*/ ERC721, ERC16
     }
 
     // IMPLEMENT CustodianOf721s ///////////////////////////////////////////////
-    struct TargetContractAndTokenId {
-        address targetContract;
-        uint256 targetTokenId;
-    }
-    TargetContractAndTokenId[] targets;
-    mapping (bytes32 => uint256) indexOfTarget;
-
-    // TODO: Reentry attack: the 721 contract could steal a token and insert it again, beware
     function enter721TransferFrom(ERC721 targetContract, uint256 targetTokenId) external {
+        require(msg.sender == owner);
         address from = targetContract.ownerOf(targetTokenId);
         targetContract.transferFrom(from, address(this), targetTokenId);
-        bytes32 targetHash = keccak256(abi.encodePacked(targetContract, targetTokenId));
-        indexOfTarget[targetHash] = targets.length;
-        targets.push(TargetContractAndTokenId(address(targetContract), targetTokenId));
     }
     
     function enter721SafeTransferFrom(ERC721 targetContract, uint256 targetTokenId) external {
+        require(msg.sender == owner);
         address from = targetContract.ownerOf(targetTokenId);
         targetContract.transferFrom(from, address(this), targetTokenId);
-        // It is tracked in onERC721Received
     }
     
     // Warning: you can not take out assets that have not been put in
     function exit721TransferFrom(ERC721 targetContract, uint256 targetTokenId) external {
-        bytes32 targetHash = keccak256(abi.encodePacked(targetContract, targetTokenId));
-        uint256 currentLocation = indexOfTarget[targetHash];
-        TargetContractAndTokenId memory target = targets[currentLocation];
-        require (target.targetContract == address(targetContract)); // TODO: can save gas here
-        require (target.targetTokenId == targetTokenId); // TODO: can save gas here
-        
+        require(msg.sender == owner);
         address from = targetContract.ownerOf(targetTokenId);
         targetContract.transferFrom(from, msg.sender, targetTokenId);
-        targets[currentLocation] = targets[targets.length - 1];
-        indexOfTarget[targetHash] = 0;
     }
     
     function exit721SafeTransferFrom(ERC721 targetContract, uint256 targetTokenId) external {
-        bytes32 targetHash = keccak256(abi.encodePacked(targetContract, targetTokenId));
-        uint256 currentLocation = indexOfTarget[targetHash];
-        TargetContractAndTokenId memory target = targets[currentLocation];
-        require (target.targetContract == address(targetContract)); // TODO: can save gas here
-        require (target.targetTokenId == targetTokenId); // TODO: can save gas here
-        
+        require(msg.sender == owner);
         address from = targetContract.ownerOf(targetTokenId);
         targetContract.safeTransferFrom(from, msg.sender, targetTokenId);
-        targets[currentLocation] = targets[targets.length - 1];
-        indexOfTarget[targetHash] = 0;
     }
     
-    function countOf721s() external returns (uint256) {
-        return targets.length;
-    }
-    
-    function a721ByIndex(uint index) external returns (ERC721 targetContract, uint256 targetTokenId) {
-        require (index < targets.length);
-        TargetContractAndTokenId memory target = targets[index];
-        targetContract = ERC721(target.targetContract);
-        targetTokenId = target.targetTokenId;
-    }
-
     // IMPLEMENT ERC721ERC721TokenReceiver /////////////////////////////////////
     /**
      * @dev Handle the receipt of a NFT. The ERC721 smart contract calls this function on the
      * recipient after a `transfer`. This function MAY throw to revert and reject the transfer. Return
      * of other than the magic value MUST result in the transaction being reverted.
      * Returns `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))` unless throwing.
-     * @notice The contract address is always the message sender. A wallet/broker/auction application
-     * MUST implement the wallet interface if it will accept safe transfers.
-     * @param _from The address which previously owned the token.
-     * @param _tokenId The NFT identifier which is being transferred.
      * @return Returns `bytes4(keccak256("onERC721Received(address,address,uint256,bytes)"))`.
     */
     function onERC721Received (
         address,
-        address _from,
-        uint256 _tokenId,
+        address,
+        uint256,
         bytes calldata
     )
         external
         returns(bytes4)
     {
-        if (_from != address(this)) {
-            bytes32 targetHash = keccak256(abi.encodePacked(msg.sender, _tokenId));
-            indexOfTarget[targetHash] = targets.length;
-            targets.push(TargetContractAndTokenId(address(msg.sender), _tokenId));
-        }
         return MAGIC_ON_ERC721_RECEIVED;
     }
 }
